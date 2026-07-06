@@ -4,3 +4,6 @@
 .githooks/* text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+# gitleaks compares fingerprint lines exactly - a stray \r from CRLF checkout
+# would silently break the allowlist and resurrect these findings as failures.
+.gitleaksignore text eol=lf

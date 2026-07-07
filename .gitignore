@@ -16,6 +16,17 @@ kubeconfig*
 *.p12
 llm-api-key*
 
+# --- Terraform: state and local overrides never get committed ---
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+infra/backend.hcl
+infra/terraform.tfvars
+!infra/terraform.tfvars.example
+
 # --- OS / editor noise ---
 .DS_Store
 Thumbs.db

@@ -21,11 +21,16 @@ llm-api-key*
 *.tfstate
 *.tfstate.*
 *.tfplan
+tfplan
 crash.log
 crash.*.log
 infra/backend.hcl
 infra/terraform.tfvars
 !infra/terraform.tfvars.example
+
+# --- Helm dependency artifacts: regenerate via `helm dependency build` ---
+**/charts/*.tgz
+**/Chart.lock
 
 # --- OS / editor noise ---
 .DS_Store

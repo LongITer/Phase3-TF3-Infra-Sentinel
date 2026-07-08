@@ -3,6 +3,7 @@
 **Ngày:** 08/07/2026
 **Người ghi nhận & xử lý:** arthur (CDO02)
 **Mức độ ảnh hưởng:** Trung bình (không ảnh hưởng checkout/khách hàng trực tiếp; có rủi ro mất dữ liệu kế toán tạm thời + gián đoạn khả năng deploy lại `accounting` trong ~1 giờ)
+**Trạng thái:** ✅ Đã đóng — 20/20 image khôi phục qua CI, `accounting` chạy ổn định 350Mi, 0 restart sau khi vá.
 
 ---
 

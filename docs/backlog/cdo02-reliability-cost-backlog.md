@@ -102,9 +102,10 @@ Lúc đọc code tĩnh (`techx-corp-chart/values.yaml`), tôi từng kết luậ
 
 Đợt kiểm tra runtime độc lập (không `apply`/`patch`/`scale`, chỉ `get`/`describe`/`events`) xác nhận lại nhiều mục sẵn có (R1, R7/C2/C4) và phát hiện thêm các điểm mới dưới đây. Nguồn: `backlog-runtime-2026-07-09.md` + chứng thực lần 2 cùng ngày.
 
-### ⚠️ CẦN VERIFY GẤP TRƯỚC PITCH — mâu thuẫn giữa R3 và evidence runtime
-R3 (ở trên) kết luận "không có readinessProbe/livenessProbe nào được cấu hình cho bất kỳ component nào", dựa trên đọc tĩnh `values.yaml`. Nhưng evidence runtime mới thấy **warning event thật**: `payment Readiness probe failed: timeout connect service 8080` và `grafana Readiness probe failed: connect refused`. Về logic, **không thể có warning "Readiness probe failed" nếu thực sự không có probe nào được cấu hình** — 2 kết luận không thể cùng đúng.
-**Việc cần làm ngay (trước khi đưa R3 lên Pitch):** chạy `kubectl -n techx-tf3 get pod <payment-pod> -o yaml | grep -A6 readinessProbe` (và tương tự cho vài service khác) để xác nhận thực tế — có thể R3 chỉ đúng cho một phần service (Grafana là subchart Bitnami có probe riêng, độc lập với `default.replicas` app components), cần làm rõ trước khi trình bày kẻo bị hội đồng (vai SRE) bắt bẻ vì đưa kết luận sai.
+### ✅ Đã verify (09/07, chiều) — R3 xác nhận đúng, không có mâu thuẫn thật
+Kiểm tra trực tiếp trên pod live: `payment-8447bf7668-zx4dj` → `readinessProbe`/`livenessProbe` **rỗng hoàn toàn** (đúng như R3 kết luận), và **không có warning event nào cho `payment`** tại thời điểm kiểm tra — cái phucdo ghi nhận trước đó không tái hiện được, có thể từ 1 pod đã bị thay thế.
+Ngược lại, `grafana-7779557549-c7tvr` container `grafana` **có readinessProbe thật** (`httpGet /api/health`, `failureThreshold:3`) — đây là probe mặc định từ **subchart Bitnami**, hoàn toàn độc lập với `default.replicas`/template app chính mà R3 đang nói tới. 2 kết luận không hề mâu thuẫn — chỉ là 2 tầng khác nhau (app tự viết vs. subchart quan sát bên thứ 3). **R3 giữ nguyên, không cần sửa.**
+**Phát hiện quan trọng hơn từ lần verify này:** Grafana đang **restart thật, ngay lúc kiểm tra** (`BackOff restarting failed container`, `Readiness probe failed: connection refused` — cách đây 4 phút) — R13 không phải chuyện đã qua, đang **active ngay bây giờ**. Nên xử lý R13 sớm hơn dự kiến, có thể ngay trước Pitch nếu muốn demo Grafana ổn định cho hội đồng xem.
 
 ### R13 — Grafana OOMKilled thật (restart=2, không phải giả định)
 **Bằng chứng:** pod `grafana-7779557549-c7tvr`, `Restart Count: 2`, `Last State: OOMKilled`, `Exit Code: 137`, `memory limit: 300Mi` / `request: 250Mi`, cộng thêm 3 sidecar (256Mi mỗi cái) chạy cùng pod.
@@ -179,13 +180,12 @@ Quyết định kiến trúc ban đầu đã chọn 1 NAT Gateway thay vì 3, ti
 
 ## Thứ tự đề xuất thực thi (không làm hết được, phải chọn)
 
-0. **⚠️ Verify mâu thuẫn R3 vs. evidence runtime** (readiness probe warning event tồn tại dù R3 nói "không có probe nào") — làm **trước tiên**, trước cả khi lên Pitch, vì ảnh hưởng tính chính xác của R2/R3 lúc trình bày.
-1. **R2 + R3** (sửa health check thật + thêm probe) — nền tảng, chi phí thấp, vá đúng INC-3.
-2. **R1** (tăng replicas + PDB nhóm checkout) — tác động business cao nhất, chi phí thấp. Làm cùng lúc: thêm PDB thật (hiện chỉ có PDB cho `coredns`/`opensearch`, chưa có cho checkout path — evidence runtime xác nhận).
-3. **R9** (Kafka ack + accounting manual commit) — rủi ro **mất đơn hàng âm thầm hoàn toàn**, nặng hơn R4 về hậu quả, chi phí thấp, xếp ngang hàng R5.
-4. **R14** (product-catalog crash history — restart=3 thật) — ưu tiên cao vì đã có bằng chứng crash thật, không còn là suy đoán như R6; làm cùng đợt với R5/R7 vì cùng service.
-5. **R5** (connection pool) — vá đúng INC-1, chi phí thấp.
-6. **R13** (Grafana OOMKilled thật, restart=2) — chi phí rất thấp (chỉ đổi số memory), ảnh hưởng tới khả năng quan sát mọi sự cố khác nên nên làm sớm.
+1. **R13** (Grafana OOMKilled — xác nhận **đang active ngay lúc verify** 09/07 chiều, không phải chuyện đã qua) — đôn lên vị trí #1 vì chi phí rất thấp (đổi số memory), sửa nhanh trước Pitch để demo Grafana ổn định cho hội đồng xem.
+2. **R2 + R3** (sửa health check thật + thêm probe — R3 đã verify đúng 09/07 chiều, không mâu thuẫn, giữ nguyên) — nền tảng, chi phí thấp, vá đúng INC-3.
+3. **R1** (tăng replicas + PDB nhóm checkout) — tác động business cao nhất, chi phí thấp. Làm cùng lúc: thêm PDB thật (hiện chỉ có PDB cho `coredns`/`opensearch`, chưa có cho checkout path — evidence runtime xác nhận).
+4. **R9** (Kafka ack + accounting manual commit) — rủi ro **mất đơn hàng âm thầm hoàn toàn**, nặng hơn R4 về hậu quả, chi phí thấp, xếp ngang hàng R5.
+5. **R14** (product-catalog crash history — restart=3 thật) — ưu tiên cao vì đã có bằng chứng crash thật, không còn là suy đoán như R6; làm cùng đợt với R5/R7 vì cùng service.
+6. **R5** (connection pool) — vá đúng INC-1, chi phí thấp.
 7. **R4** (rollback checkout) — rủi ro tài chính trực tiếp, chi phí thấp.
 8. **R7** (CPU requests/limits) — nền tảng bắt buộc cho C2/C4.
 9. **C1** (sửa lại lifecycle policy đúng cách) — dọn nợ tự gây ra.

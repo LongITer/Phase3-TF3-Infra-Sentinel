@@ -114,6 +114,17 @@ service dưới `techx-corp-platform/src/`, dùng làm bằng chứng cho backlo
 - 3 service dùng chung 1 Postgres instance (`product-catalog`, `product-reviews`,
   `accounting`), 1 Valkey instance (`cart`), 1 Kafka broker (`checkout` producer →
   `accounting` + `fraud-detection` consumer) — không có datastore nào có replica.
+- **Bổ sung (09/07, đọc sâu code từng service — đã đưa vào backlog CDO02 mục R9-R12):**
+  `checkout` publish Kafka bằng Sarama async producer với `RequiredAcks = NoResponse`
+  (fire-and-forget) **+** `accounting` (`Consumer.cs`) dùng `EnableAutoCommit = true` và
+  bỏ message lặng lẽ nếu parse/DB lỗi → **có thể mất đơn hàng hoàn toàn âm thầm** sau khi
+  khách đã bị charge (nặng hơn thiếu-rollback đã biết, vì mất luôn dấu vết). `valkey-cart`
+  không có bất kỳ cấu hình persistence nào (không RDB/AOF/PVC) — restart pod mất sạch giỏ
+  hàng đang hoạt động. `currency` (C++) không validate currency code, code lạ → chia cho 0
+  → NaN/Inf âm thầm thay vì lỗi rõ ràng. `quote` (PHP) nuốt exception khi thiếu
+  `numberOfItems`, trả `0.0` thay vì lỗi. **`llm` service xác nhận là mock hoàn toàn**
+  (tóm tắt/trả lời từ JSON tĩnh định sẵn, không gọi LLM thật nào) — cắm LLM thật là việc
+  của AIO02 qua `values-aio-llm.yaml`, không phải backlog CDO02.
 
 ## Quy ước làm việc trong repo này
 

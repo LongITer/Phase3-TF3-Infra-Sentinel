@@ -114,6 +114,12 @@ Ngược lại, `grafana-7779557549-c7tvr` container `grafana` **có readinessPr
 **Đề xuất:** Tăng memory limit Grafana lên tối thiểu 512Mi request / 1Gi limit trong Helm values (không patch tay runtime), rà lại số sidecar/dashboard đang bật, thêm alert riêng cho OOM/restart của chính Grafana.
 **Chi phí:** Rất thấp (chỉ đổi số trong values, thêm ~700Mi memory cho 1 pod).
 
+**Cập nhật (09/07, tối) — CDO02 verify độc lập, phát hiện thêm Jaeger cùng bị, cùng thời điểm:**
+Kiểm tra runtime riêng (chỉ `get`/`describe`, không đổi gì) xác nhận lại đúng số liệu Grafana ở trên (`Restart Count: 4` tại thời điểm check này, tăng thêm so với lần phucdo ghi — nghĩa là **đang lặp lại**, không phải 1 lần rồi thôi), và phát hiện thêm:
+- `jaeger-bbc8c79f5-6dl2v`: `Restart Count: 2`, `Last State: OOMKilled`, `Exit Code: 137`, `memory limit: 600Mi`, OOM lúc `07:17:58Z` — **cách thời điểm Grafana OOM (`07:17:04Z`) đúng 1 phút**. Trùng hợp thời gian gần như tuyệt đối giữa 2 service quan sát (Grafana + Jaeger) gợi ý **1 nguyên nhân chung** (spike tải/trace volume) chứ không phải 2 sự cố độc lập ngẫu nhiên.
+- Nghi vấn nguyên nhân: trùng ngày hệ thống được đưa ra public qua CloudFront (xem `infra/cloudfront.tf`) — có thể traffic/bot từ ngoài tạo thêm tải trace/dashboard mà limit cũ (đặt lúc chỉ có traffic nội bộ từ load-generator) chưa tính tới. Cần xác nhận bằng cách xem `otel-collector`/Jaeger span ingestion rate quanh khung giờ đó trước khi kết luận chắc chắn.
+**Đề xuất bổ sung:** đưa `jaeger.resources.limits.memory` (hiện 600Mi) vào cùng đợt review với Grafana ở R13, đo lại dựa trên traffic public thật thay vì giữ nguyên số đặt từ lúc còn nội bộ.
+
 ### R14 — `product-catalog` có crash history thật (restart=3, `Error`, không phải suy đoán)
 **Bằng chứng:** pod `product-catalog-d769b79c4-j7wp7`, `Restart Count: 3`, `Last Reason: Error`, `Exit Code: 1`, `memory limit: 20Mi`, `GOMEMLIMIT: 16MiB`.
 **Rủi ro:** Cao — đây là service nằm thẳng trên đường business chính (danh mục sản phẩm), memory limit 20Mi rất thấp, khớp với nhóm service đã cảnh báo ở R6 nhưng giờ có bằng chứng crash thật, không còn là suy đoán.

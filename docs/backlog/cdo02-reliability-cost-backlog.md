@@ -64,6 +64,40 @@ Lúc đọc code tĩnh (`techx-corp-chart/values.yaml`), tôi từng kết luậ
 
 ---
 
+## Bổ sung (09/07) — phát hiện mới từ đọc trực tiếp source code từng service
+
+Đợt đọc code sâu (`checkout`, `payment`, `shipping`, `quote`, `currency`, `email`, `accounting/Consumer.cs`, `cart/ValkeyCartStore.cs`) xác nhận thêm các điểm sau, chưa nằm trong backlog gốc.
+
+### R9 — Kafka producer fire-and-forget + `accounting` auto-commit trước khi xử lý xong → có thể mất đơn hàng hoàn toàn âm thầm
+**Rủi ro:** Cao — 2 lỗ hổng cộng dồn trên cùng 1 luồng dữ liệu tài chính:
+1. `checkout` publish lên Kafka topic `orders` bằng Sarama async producer với `RequiredAcks = sarama.NoResponse` (`kafka/producer.go`) — không chờ xác nhận, có thể rớt message mà `checkout` không hề biết.
+2. `accounting` (`Consumer.cs`) dùng `EnableAutoCommit = true` — offset được commit **trước khi** biết `ProcessMessage` có thành công không. Nếu parse lỗi hoặc Postgres đang quá tải, code chỉ log `"Order parsing failed:"` rồi **bỏ luôn message**, không dead-letter, không retry.
+**Tác động business:** Rất cao — khách đã bị charge tiền (qua `payment`, xem R4) nhưng đơn hàng có thể **biến mất hoàn toàn khỏi accounting** mà không ai phát hiện, không log ở tầng nào đủ rõ để alert. Nặng hơn R4 vì R4 ít nhất còn giữ lại bằng chứng đơn hàng thất bại; đây là mất dấu vết hoàn toàn.
+**Đề xuất:** Đổi `RequiredAcks` sang `WaitForAll` (hoặc `WaitForLocal`) ở `checkout`; đổi `accounting` sang manual commit **sau khi** `SaveChanges()` thành công, thêm dead-letter topic hoặc retry có giới hạn cho message lỗi thay vì drop âm thầm.
+**Chi phí:** Thấp — chỉ đổi cấu hình + logic commit, không cần thêm hạ tầng.
+
+### R10 — `valkey-cart` không có bất kỳ cấu hình persistence nào
+**Rủi ro:** Trung bình — xác nhận qua `values.yaml` (block `valkey-cart`): không RDB, không AOF, không PVC. Restart pod (deploy, node drain, OOM...) = mất sạch giỏ hàng đang hoạt động của mọi khách cùng lúc.
+**Tác động business:** Trung bình-cao — không mất doanh thu trực tiếp (khách thêm lại giỏ được) nhưng ảnh hưởng trải nghiệm ngay lúc pod restart, và **cộng dồn với R1** (`valkey-cart` cũng chỉ có 1 replica) làm rủi ro này dễ xảy ra hơn mỗi lần deploy.
+**Đề xuất:** Bật ít nhất AOF (`appendonly yes`) hoặc RDB snapshot định kỳ + PVC cho `valkey-cart`; cân nhắc cùng lúc với R1 khi tăng replicas (Valkey cluster/replica thật là bước xa hơn, có thể để sau).
+**Chi phí:** Thấp (bật persistence) đến trung bình (nếu làm luôn replica Valkey).
+
+### R11 — `currency`: mã tiền tệ không hợp lệ → chia cho 0 → NaN/Inf âm thầm, không có validate input
+**Rủi ro:** Thấp khả năng (cần truyền currency code sai/lạ mới trigger) nhưng nghiêm trọng nếu xảy ra: `unordered_map::operator[]` trong `server.cpp` trả về `0.0` mặc định cho code không tồn tại thay vì lỗi, khiến phép chia tạo ra `NaN`/`Inf` thay vì trả lỗi rõ ràng.
+**Tác động business:** Trung bình — nếu lọt qua tới bước tính tổng tiền ở `checkout`, khách có thể thấy giá sai (0đ, hoặc số vô nghĩa) thay vì bị chặn lại bằng lỗi dễ debug.
+**Đề xuất:** Thêm validate `from_code`/`to_code` nằm trong tập hỗ trợ trước khi tính, trả gRPC `InvalidArgument` nếu không hợp lệ thay vì để tính toán âm thầm sai.
+**Chi phí:** Rất thấp — vài dòng validate trong `Convert()`.
+
+### R12 — `quote`: thiếu `numberOfItems` trong request → nuốt exception, trả `0.0` thay vì lỗi
+**Rủi ro:** Thấp khả năng, thấp mức nghiêm trọng đơn lẻ, nhưng dễ gây khó hiểu khi debug (không có log lỗi, chỉ thấy phí ship = $0 bất thường).
+**Tác động business:** Thấp — nhưng nếu `shipping`/`checkout` có bug gửi thiếu field, phí ship về 0 âm thầm ảnh hưởng trực tiếp doanh thu mà không ai biết để điều tra.
+**Đề xuất:** Đổi `quote` trả HTTP 4xx rõ ràng khi thiếu `numberOfItems`, để `shipping` (caller) phải xử lý lỗi thay vì nhận `0.0` hợp lệ giả.
+**Chi phí:** Rất thấp.
+
+> **Ghi chú AI (không phải backlog Reliability/Cost, nhưng đáng ghi lại để trả lời hội đồng chính xác):** đọc code xác nhận `llm` service hiện là **mock hoàn toàn** — trả lời/tóm tắt từ dữ liệu tĩnh định sẵn (`product-review-summaries.json`), không gọi LLM thật. Việc cắm LLM thật thuộc phạm vi AIO02 (`values-aio-llm.yaml`), không phải việc của CDO02, nhưng nên biết để trả lời đúng nếu bị hỏi ở Pitch/Readout.
+
+---
+
 ## COST OPTIMIZATION
 
 ### C1 — Không còn cơ chế dọn image cũ trên ECR (lifecycle policy đã bị xoá do sự cố)
@@ -108,13 +142,15 @@ Quyết định kiến trúc ban đầu đã chọn 1 NAT Gateway thay vì 3, ti
 
 1. **R2 + R3** (sửa health check thật + thêm probe) — nền tảng, chi phí thấp, vá đúng INC-3.
 2. **R1** (tăng replicas + PDB nhóm checkout) — tác động business cao nhất, chi phí thấp.
-3. **R5** (connection pool) — vá đúng INC-1, chi phí thấp.
-4. **R4** (rollback checkout) — rủi ro tài chính trực tiếp, chi phí thấp.
-5. **R7** (CPU requests/limits) — nền tảng bắt buộc cho C2/C4.
-6. **C1** (sửa lại lifecycle policy đúng cách) — dọn nợ tự gây ra.
-7. **C2** (Cluster Autoscaler thật) — tiết kiệm chi phí đo được ngay.
-8. **C6** (áp ResourceQuota) — làm sau R1+R7.
-9. **C3** (Spot) — chỉ sau khi R1 xong.
-10. **R6, C4, C5** — làm khi còn thời gian, giá trị thấp hơn nhóm trên.
+3. **R9** (Kafka ack + accounting manual commit) — rủi ro **mất đơn hàng âm thầm hoàn toàn**, nặng hơn R4 về hậu quả, chi phí thấp, xếp ngang hàng R5.
+4. **R5** (connection pool) — vá đúng INC-1, chi phí thấp.
+5. **R4** (rollback checkout) — rủi ro tài chính trực tiếp, chi phí thấp.
+6. **R7** (CPU requests/limits) — nền tảng bắt buộc cho C2/C4.
+7. **C1** (sửa lại lifecycle policy đúng cách) — dọn nợ tự gây ra.
+8. **C2** (Cluster Autoscaler thật) — tiết kiệm chi phí đo được ngay.
+9. **C6** (áp ResourceQuota) — làm sau R1+R7.
+10. **C3** (Spot) — chỉ sau khi R1 xong.
+11. **R10** (Valkey persistence) — làm cùng đợt với R1 (đụng cùng service `valkey-cart`).
+12. **R6, C4, C5, R11, R12** — làm khi còn thời gian, giá trị/mức nghiêm trọng thấp hơn nhóm trên (R11/R12 chỉ vài dòng code, có thể tranh thủ chèn vào bất kỳ ngày nào rảnh tay).
 
 **Cố ý bỏ ở Tuần 1:** R8 (migrate datastore) — chờ xem có thành mandate BTC không trước khi tự đầu tư công sức lớn.

@@ -337,15 +337,15 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 - *Rollback / nếu làm sai:*
   `git revert`, redeploy `quote`. Rủi ro thấp.
 
-## REL-13 — 🔴 Grafana OOMKilled — ĐANG ACTIVE, dashboard chính hiện không dùng được
+## REL-13 — 🟠 Grafana OOMKilled 11 lần/ngày — hiện tạm ổn định, nhưng gốc chưa vá (sẽ tái phát khi tải tăng)
 *Trụ:* Reliability / Observability · *Ưu tiên đề xuất:* P0 · *Owner:* Chưa gán
 
 - *Evidence:*
-  Verify trực tiếp lúc ~14:50 ICT 09/07: `grafana-7779557549-c7tvr` đang `CrashLoopBackOff`, `Restart Count: 9` (tăng liên tục trong ngày: 2 → 4 → 9 qua 3 lần kiểm tra), container chính `Ready: False`, `Last State: OOMKilled`, `Exit Code: 137`. `memory limit: 300Mi` / `request: 250Mi` — không đổi từ lúc dựng baseline dù đã có 1 lần thử vá không thành công trước đó (helm upgrade bị API server từ chối vì `requests > limits`). Chu kỳ sống giữa các lần crash đang ngắn dần (~3 phút ở lần gần nhất). Tương quan với Jaeger: 2 lần crash gần-đồng-thời trong ngày (19 giây và ~1 phút cách nhau) — đáng cân nhắc cho 1 nguyên nhân chung (nghi vấn traffic từ CloudFront, chưa xác nhận qua ingestion rate thật).
+  `grafana-7779557549-c7tvr`: `Restart Count: 11` (tích luỹ, tăng dần trong ngày 09/07: 2 → 4 → 9 → 11 qua các lần kiểm tra), mỗi lần `Last State: OOMKilled`, `Exit Code: 137`. `memory limit: 300Mi` / `request: 250Mi` — **không đổi từ baseline, tức nguyên nhân gốc chưa được vá**. **Cập nhật hiện trạng (10/07): pod đang `Running`, `Ready: True`, OOM gần nhất `09/07 09:48 UTC` → đã ổn định ~17h, dashboard hiện DÙNG ĐƯỢC.** *(Quan trọng khi demo: đừng nói "Grafana đang chết" — nó đang chạy. Nói đúng: "đã OOM 11 lần trong ngày qua, hiện tạm ổn vì tải giảm, nhưng limit 300Mi chưa sửa nên sẽ tái phát khi tải tăng lại.")* Tương quan với Jaeger: 2 lần crash gần-đồng-thời trong ngày (19 giây và ~1 phút cách nhau) — nghi 1 nguyên nhân chung (traffic từ CloudFront, chưa xác nhận qua ingestion rate thật).
 - *Ảnh hưởng khách hàng:*
-  Không ảnh hưởng trực tiếp khách hàng (Grafana không nằm trên luồng mua hàng), nhưng team **mất khả năng quan sát hệ thống ngay lúc cần nhất** nếu có incident khác xảy ra cùng lúc — ảnh hưởng gián tiếp tới tốc độ phản ứng mọi sự cố khác.
+  Không ảnh hưởng trực tiếp khách hàng (Grafana không nằm trên luồng mua hàng), nhưng nếu nó OOM lại **đúng lúc** có incident khác trên luồng checkout, team **mất khả năng quan sát đúng lúc cần nhất** — ảnh hưởng gián tiếp tới tốc độ phản ứng mọi sự cố khác.
 - *Rủi ro (khả năng × mức nghiêm trọng):*
-  Khả năng đã xảy ra thật, đang tiếp diễn (không phải giả định) × nghiêm trọng cao (mù quan sát đúng lúc cần) = **P0**.
+  Khả năng cao (đã xảy ra thật 11 lần, gốc chưa vá → chắc chắn tái phát khi tải tăng, chỉ là chưa biết khi nào) × nghiêm trọng cao (mù quan sát đúng lúc cần) = **P0**. *Không hạ xuống P1 dù hiện tạm ổn — vì "tạm ổn do tải thấp" không phải là đã vá.*
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
   Gián tiếp nhưng nghiêm trọng — ảnh hưởng MTTR (mean time to recovery) của mọi luồng khác.
 - *Giải pháp đề xuất:*
@@ -381,7 +381,7 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 *Trụ:* Reliability / Observability · *Ưu tiên đề xuất:* P1 · *Owner:* Chưa gán
 
 - *Evidence:*
-  Toàn bộ REL-13, REL-14 và các warning readiness đều bị phát hiện **thủ công** qua `describe`/`events`, không qua alert nào. `kubectl get pdb -A` chỉ thấy PDB cho `coredns`/`opensearch-pdb`. Grafana đang down thật (REL-13) là ví dụ sống: không ai biết dashboard chính đang chết nếu không tự tay `kubectl get pods` kiểm tra.
+  Toàn bộ REL-13, REL-14, REL-16 và các warning readiness đều bị phát hiện **thủ công** qua `describe`/`events`, không qua alert nào. `kubectl get pdb -A` chỉ thấy PDB cho `coredns`/`opensearch-pdb`. Ví dụ sống: Grafana OOM 11 lần và Kafka OOM (REL-16) trong ngày qua — **không có alert nào bắn**, chỉ phát hiện được nhờ chủ động chạy `kubectl get pods` soi cột RESTARTS; nếu không ai soi tay đúng lúc thì không ai biết.
 - *Ảnh hưởng khách hàng:*
   Không trực tiếp, nhưng gián tiếp kéo dài thời gian khách hàng chịu ảnh hưởng của mọi sự cố khác vì team phát hiện chậm.
 - *Rủi ro (khả năng × mức nghiêm trọng):*
@@ -451,7 +451,7 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 - *Rủi ro (khả năng × mức nghiêm trọng):*
   Khả năng cao (đang trả tiền 3 node 24/7 chắc chắn) × nghiêm trọng trung bình (lãng phí chi phí, không phải outage) = **P1** — phụ thuộc REL-07 (cần CPU requests để autoscaler tính đúng).
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
-  Trực tiếp vào ngân sách $300/tuần — ước tính ~$42/tuần cho node cố định dù tải ban đêm gần như bằng 0.
+  Trực tiếp vào ngân sách $300/tuần. 3 node t3.large ≈ $53/tuần (line compute lớn nhất). Autoscaler scale-down 1–2 node lúc tải thấp (ban đêm gần như 0 traffic) tiết kiệm **ước tính ~$18–35/tuần** — giữ tối thiểu 1–2 node cho baseline, không scale về 0. *(Không claim tiết kiệm $42 như bản nháp cũ — số đó ngụ ý scale-down gần hết 3 node, không an toàn và không nhất quán với $53 tổng.)*
 - *Giải pháp đề xuất:*
   Cài `cluster-autoscaler` Helm chart dùng IRSA role đã có sẵn, cấu hình scale-down khi tải thấp. **Chưa nên tối ưu scale-down quá mạnh trước khi có đủ số liệu** (theo khuyến nghị chéo từ phucdo).
 - *Chi phí / effort:*
@@ -572,13 +572,13 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 2. **P03** (REL-01) — tăng replicas checkout path. *CDO02 phối hợp CDO01.*
 3. **P04 + P05 + P06** (REL-04 + REL-09) — rollback checkout, sửa accounting/Kafka mất đơn âm thầm. *CDO02 chủ trì cả 3, không cần CDO01. **Cập nhật 10/07:** REL-16 (Kafka OOM thật) vừa chứng minh rủi ro P05/P06 xảy ra thật trong ngày, không còn lý thuyết — nên nêu bằng chứng này khi bảo vệ độ ưu tiên.*
 4. **P07 + P08** (metrics-server, baseline load test/RED) — *CDO01 chủ trì, CDO02 không cần tự làm (đã bàn giao qua meeting).*
-5. **P09 + P10** (REL-13 + REL-15) — sửa Grafana/Jaeger OOM + thêm alert. *CDO02 phối hợp CDO01, P09 đang active ngay lúc này (xem REL-13).*
+5. **P09 + P10** (REL-13 + REL-15) — sửa Grafana/Jaeger OOM + thêm alert. *CDO02 phối hợp CDO01. P09: Grafana/Jaeger đã OOM 11/7 lần hôm qua, hiện tạm ổn định (~17h) nhưng limit chưa vá → sẽ tái phát khi tải tăng (xem REL-13, đừng nói "đang chết" khi demo vì dashboard hiện chạy được).*
 6. **P15 + P16** (NetworkPolicy + ingress boundary) — *CDO01 chủ trì. CDO02 cần theo sát P16 vì đụng trực tiếp `infra/cloudfront.tf` mình vừa dựng.*
 7. **P11 + P12 + P22** (HPA, CPU requests/limits, Cluster Autoscaler/Karpenter) — *CDO01 chủ trì hoàn toàn, không còn là việc CDO02 (meeting đã chuyển giao).*
 
 **Phần CDO02 tự làm thêm, ngoài phạm vi P01-P25 (không có mã P chung):**
 - **P1 nội bộ:** REL-05 (P13), REL-10 phần Valkey (P14) — đã có mã P, thứ tự nằm trong bước 3-4 ở trên theo phụ thuộc riêng (REL-05 phụ thuộc REL-01/02/03 xong trước).
-- **P2 nội bộ (khi còn thời gian):** COST-01 (ECR lifecycle), COST-03 (Spot), COST-04 (right-size), COST-05 (giảm memory load-generator), REL-11 (currency validate), REL-12 (quote validate).
+- **P2 nội bộ (khi còn thời gian):** COST-01 (ECR lifecycle), COST-03 (Spot), COST-04 (right-size), COST-05 (điều tra OOM load-generator — **không phải giảm memory**, xem đính chính ở COST-05), REL-11 (currency validate), REL-12 (quote validate).
 
 **Theo dõi, không chủ động làm:** REL-08 (và phần Postgres/Kafka trong REL-10) — chờ mandate BTC. Không có mã P tương ứng trong meeting, đúng như đánh giá ban đầu — không ai trong 3 team yêu cầu làm sớm.
 

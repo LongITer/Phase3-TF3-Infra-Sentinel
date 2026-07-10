@@ -87,9 +87,9 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 - *Ảnh hưởng khách hàng:*
   1 pod chết (crash, node drain, OOM) = mất hoàn toàn 1 chặng trong luồng mua hàng trong lúc pod restart (vài giây tới vài chục giây tùy readiness). Khách đang ở giữa flow checkout gặp lỗi 5xx hoặc timeout. **Đã xảy ra thật 09/07: 1.511 request checkout lỗi trong ~4 giờ.**
 - *Rủi ro (khả năng × mức nghiêm trọng):*
-  Khả năng cao (đã từng xảy ra thật ở INC-2, **và lần 2 vừa đo được 09/07**) × nghiêm trọng cao (đụng thẳng luồng ra tiền) = **P0**.
+  Khả năng **cao, đã đo được thật** (checkout SLO breach 09/07, xem dưới) × nghiêm trọng cao (đụng thẳng luồng ra tiền) = **P0**.
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
-  Checkout SLO ≥99% (`SLO.md`) — **đã thực sự bị vi phạm** (98.96% đo được 10/07 sáng, cửa sổ rolling 24h sẽ tự sạch lại trong vài giờ tới nhưng sự việc đã xảy ra thật). INC-2 đã xảy ra thật vì đúng nguyên nhân này trước đó (xem `INCIDENT_HISTORY.md`) — sự kiện 09/07 là lần lặp lại thứ 2, lần này do chính hạ tầng CDO02 vận hành (node version sync) kích hoạt, không phải lỗi ứng dụng.
+  Checkout SLO ≥99% (`SLO.md`) — **đã thực sự bị vi phạm** (98.96% đo được 10/07 sáng, cửa sổ rolling 24h sẽ tự sạch lại trong vài giờ tới nhưng sự việc đã xảy ra thật). *Lưu ý cite chính xác để không bị bắt lỗi:* **INC-2** trong `INCIDENT_HISTORY.md` là sự cố **mất giỏ hàng** — nguyên nhân gốc single-replica của nó liên quan mục này, nhưng phần data-loss thuộc **REL-10** (đừng gán trọn INC-2 cho REL-01). Bằng chứng trực tiếp và mạnh nhất cho REL-01 là **sự kiện đo được 09/07** (node version sync rolling-replace → 1.511 lỗi checkout), không phải INC-2. INC-2 chỉ củng cố "bài học còn treo: vài thành phần vẫn là SPOF".
 - *Giải pháp đề xuất:*
   Set `replicas: 2` cho `cart`, `checkout`, `payment`, `currency`, `product-catalog`, `shipping` trong values override; thêm `PodDisruptionBudget` (`minAvailable: 1`) cho từng service này; cân nhắc `topologySpreadConstraints` để tránh 2 pod cùng node.
 - *Chi phí / effort:*
@@ -281,13 +281,13 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 *Trụ:* Reliability · *Ưu tiên đề xuất:* P1 · *Owner:* Chưa gán
 
 - *Evidence:*
-  `values.yaml` (`valkey-cart`): không RDB, không AOF, không PVC. Runtime: `kubectl get pv,pvc -A` → **không có PV/PVC nào trong toàn cluster** — nghĩa là Postgres và Kafka cũng hoàn toàn không có persistent storage, không riêng Valkey.
+  `values.yaml` (`valkey-cart`): không RDB, không AOF, không PVC. Runtime: `kubectl get pv,pvc -A` → **không có PV/PVC nào trong toàn cluster** — nghĩa là Postgres và Kafka cũng hoàn toàn không có persistent storage, không riêng Valkey. **Đây là nguyên nhân gốc chính xác của INC-2** (`INCIDENT_HISTORY.md`): "mất giỏ hàng sau khi node được lên lịch lại — lớp lưu giỏ hàng chạy đơn lẻ, state trong bộ nhớ mất theo". INC-2 map trực tiếp vào mục này, không phải suy diễn.
 - *Ảnh hưởng khách hàng:*
-  Restart pod `valkey-cart` (deploy, node drain, OOM) = khách đang có giỏ hàng mất sạch, phải thêm lại từ đầu. Nếu là Postgres/Kafka: mất dữ liệu sản phẩm/review/đơn hàng đã ghi vĩnh viễn.
+  Restart pod `valkey-cart` (deploy, node drain, OOM) = khách đang có giỏ hàng mất sạch, phải thêm lại từ đầu — **đã xảy ra thật ở INC-2**. Nếu là Postgres/Kafka: mất dữ liệu sản phẩm/review/đơn hàng đã ghi vĩnh viễn.
 - *Rủi ro (khả năng × mức nghiêm trọng):*
-  Valkey: khả năng trung bình (cộng dồn với REL-01, `valkey-cart` cũng 1 replica) × nghiêm trọng trung bình = P1. Postgres/Kafka: nghiêm trọng rất cao nhưng trùng phạm vi REL-08 (chờ mandate) → giữ ở mức theo dõi/accepted risk, không tách P0.
+  Valkey: khả năng **cao** (đã xảy ra thật ở INC-2, và `valkey-cart` vẫn 1 replica + 0 persistence tới giờ — chưa vá) × nghiêm trọng trung bình = **P1**. Postgres/Kafka: nghiêm trọng rất cao nhưng trùng phạm vi REL-08 (chờ mandate) → giữ ở mức theo dõi/accepted risk, không tách P0.
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
-  Valkey: không mất doanh thu trực tiếp (khách thêm lại giỏ được) nhưng ảnh hưởng trải nghiệm mỗi lần deploy. Postgres/Kafka: rất cao nếu xảy ra, nhưng có thể trùng phạm vi mandate managed-DB sắp tới.
+  Valkey: không mất doanh thu trực tiếp (khách thêm lại giỏ được) nhưng ảnh hưởng trải nghiệm mỗi lần deploy/node event — **INC-2 là bằng chứng lịch sử đã đóng nhưng bài học còn treo ("vài thành phần vẫn là SPOF")**. Postgres/Kafka: rất cao nếu xảy ra, nhưng có thể trùng phạm vi mandate managed-DB sắp tới.
 - *Giải pháp đề xuất:*
   Bật AOF (`appendonly yes`) hoặc RDB snapshot định kỳ + PVC cho `valkey-cart`, làm cùng đợt với REL-01. Với Postgres/Kafka: **ghi rõ đây là accepted risk có ý thức** trong ADR, không tự ý thêm PVC lớn ngay nếu nghi sắp có mandate managed-DB.
 - *Chi phí / effort:*

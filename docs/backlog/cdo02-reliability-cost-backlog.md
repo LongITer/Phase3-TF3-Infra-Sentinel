@@ -87,15 +87,17 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 - *Ảnh hưởng khách hàng:*
   1 pod chết (crash, node drain, OOM) = mất hoàn toàn 1 chặng trong luồng mua hàng trong lúc pod restart (vài giây tới vài chục giây tùy readiness). Khách đang ở giữa flow checkout gặp lỗi 5xx hoặc timeout. **Đã xảy ra thật 09/07: 1.511 request checkout lỗi trong ~4 giờ.**
 - *Rủi ro (khả năng × mức nghiêm trọng):*
-  Khả năng cao (đã từng xảy ra thật ở INC-2, **và lần 2 vừa đo được 09/07**) × nghiêm trọng cao (đụng thẳng luồng ra tiền) = **P0**.
+  Khả năng **cao, đã đo được thật** (checkout SLO breach 09/07, xem dưới) × nghiêm trọng cao (đụng thẳng luồng ra tiền) = **P0**.
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
-  Checkout SLO ≥99% (`SLO.md`) — **đã thực sự bị vi phạm** (98.96% đo được 10/07 sáng, cửa sổ rolling 24h sẽ tự sạch lại trong vài giờ tới nhưng sự việc đã xảy ra thật). INC-2 đã xảy ra thật vì đúng nguyên nhân này trước đó (xem `INCIDENT_HISTORY.md`) — sự kiện 09/07 là lần lặp lại thứ 2, lần này do chính hạ tầng CDO02 vận hành (node version sync) kích hoạt, không phải lỗi ứng dụng.
+  Checkout SLO ≥99% (`SLO.md`) — **đã thực sự bị vi phạm** (98.96% đo được 10/07 sáng, cửa sổ rolling 24h sẽ tự sạch lại trong vài giờ tới nhưng sự việc đã xảy ra thật). *Lưu ý cite chính xác để không bị bắt lỗi:* **INC-2** trong `INCIDENT_HISTORY.md` là sự cố **mất giỏ hàng** — nguyên nhân gốc single-replica của nó liên quan mục này, nhưng phần data-loss thuộc **REL-10** (đừng gán trọn INC-2 cho REL-01). Bằng chứng trực tiếp và mạnh nhất cho REL-01 là **sự kiện đo được 09/07** (node version sync rolling-replace → 1.511 lỗi checkout), không phải INC-2. INC-2 chỉ củng cố "bài học còn treo: vài thành phần vẫn là SPOF".
 - *Giải pháp đề xuất:*
   Set `replicas: 2` cho `cart`, `checkout`, `payment`, `currency`, `product-catalog`, `shipping` trong values override; thêm `PodDisruptionBudget` (`minAvailable: 1`) cho từng service này; cân nhắc `topologySpreadConstraints` để tránh 2 pod cùng node.
 - *Chi phí / effort:*
-  ~2-3 giờ-người (sửa values + test). Chi phí hạ tầng: nhân đôi ~6 pod nhỏ, tổng thêm vài trăm Mi memory — không đáng kể so với trần $300/tuần.
+  ~2-3 giờ-người (sửa values + test). **Chi phí hạ tầng = $0 (đã kiểm chứng, không phải ước lượng):** 6 service này limit nhỏ (20–160Mi), nhân đôi chỉ thêm ~0.5–1Gi RAM tổng. Node hiện dùng 27–41% memory / 12–64% CPU requests (`kubectl describe node`) → thừa headroom, **không cần thêm node → không phát sinh chi phí**. Multi-AZ spread cũng $0 vì đã sẵn 3 node/3 AZ, chỉ thêm `topologySpreadConstraints` (config). Đối chiếu `BUDGET.md`: run-rate hiện ~$95/tuần (~1/3 trần $300), 3 node t3.large là line lớn nhất (~$53/tuần). *(Multi-AZ tốn tiền thật = managed DB Multi-AZ ~gấp đôi — đó là REL-08, cố ý hoãn.)*
+- *ROI:*
+  Chi phí $0, tác động = bảo vệ trực tiếp checkout SLO đã **đo được vi phạm thật** hôm qua (98.96%, ~1.500 đơn fail). Reliability win rẻ nhất có thể có — đây là lý do xếp P0, không phải vì tốn kém mới quan trọng.
 - *Acceptance criteria:*
-  `kubectl get deploy` cho 6 service trên hiển thị `AVAILABLE=2`; PDB tồn tại và `ALLOWED DISRUPTIONS ≥1`; kill thủ công 1 pod trong nhóm, xác nhận request checkout vẫn thành công (không có lỗi 5xx quan sát được trong lúc pod đang restart).
+  `kubectl get deploy` cho 6 service trên hiển thị `AVAILABLE=2`; PDB tồn tại và `ALLOWED DISRUPTIONS ≥1`; **bài failover test bắt buộc:** kill thủ công 1 pod trong nhóm (`kubectl delete pod`) VÀ drain thử 1 node (`kubectl drain --ignore-daemonsets`), xác nhận checkout success-rate không tụt dưới SLO trong suốt quá trình (đo qua Prometheus, không chỉ quan sát mắt). Đây chính là bài test mà đợt rolling-replace hôm qua đã cho thấy trạng thái hiện tại **trượt**.
 - *Rollback / nếu làm sai:*
   `helm upgrade --install techx-corp ... --set <service>.replicas=1` để trả lại giá trị cũ (kèm lại `-f values-flagd-sync.yaml`, bắt buộc theo GETTING_STARTED.md). Nếu replicas mới gây thiếu tài nguyên node (Pending), phát hiện ngay qua `kubectl get pods` (vài phút) do pod không schedule được.
 
@@ -131,13 +133,17 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
   Nguyên nhân gốc xác nhận của INC-3, **vẫn chưa được vá tới giờ**. Mỗi lần deploy/rollout trong 3 tuần còn lại có nguy cơ tái diễn.
 - *Giải pháp đề xuất:*
-  Thêm `readinessProbe`/`livenessProbe` (gRPC health check hoặc HTTP `/healthz` tùy service) vào template pod cho toàn bộ component, ưu tiên nhóm checkout trước. **Phụ thuộc REL-02** — probe vô nghĩa nếu health check backend vẫn giả.
+  Thêm `readinessProbe`/`livenessProbe` (gRPC health check hoặc HTTP `/healthz` tùy service) cho toàn bộ component, ưu tiên nhóm checkout. **Phụ thuộc REL-02** — probe vô nghĩa nếu health check backend vẫn giả.
+  **Threshold đề xuất cụ thể (không đặt chung chung, sẵn sàng bảo vệ trước SRE):**
+  - *readinessProbe* (chỉ gỡ pod khỏi Service endpoint — an toàn, được phép nhạy hơn): `periodSeconds: 5`, `timeoutSeconds: 2`, `failureThreshold: 3`, `successThreshold: 1` (→ ~15s lỗi mới gỡ khỏi rotation). `initialDelaySeconds` tách theo tốc độ khởi động: Go/Rust/C++ (`checkout`/`currency`/`product-catalog`/`shipping`) ~5s; .NET/Java/Ruby (`accounting`/`ad`/`email`) ~15–20s.
+  - *livenessProbe* (giết + restart pod — nguy hiểm, **cố ý nới lỏng hơn readiness**): `periodSeconds: 10`, `timeoutSeconds: 3`, `failureThreshold: 5` (→ ~50s lỗi liên tục mới kill, tránh giết pod vì blip tạm thời).
+  - **Nguyên tắc bắt buộc:** readiness check dependency thật (từ REL-02); liveness **chỉ** check process còn phản hồi, **KHÔNG** check dependency — nếu không, lúc Postgres/Kafka sập, liveness fail đồng loạt → K8s restart mọi pod cùng lúc → cascading failure, tệ hơn tình trạng ban đầu.
 - *Chi phí / effort:*
-  Thấp — chủ yếu cấu hình YAML, ~2-3 giờ-người cho toàn bộ chart.
+  Thấp — chủ yếu cấu hình YAML, ~2-3 giờ-người cho toàn bộ chart. Chi phí hạ tầng $0.
 - *Acceptance criteria:*
-  `kubectl rollout restart deploy/checkout` (và tương tự cho nhóm checkout) không gây lỗi 5xx quan sát được phía client trong suốt quá trình rollout (test bằng cách gọi liên tục vào storefront lúc rollout).
+  `kubectl rollout restart deploy/checkout` (và nhóm checkout) không làm checkout success-rate tụt dưới SLO trong suốt rollout (đo qua Prometheus, gọi liên tục vào storefront). Test cả trường hợp probe hoạt động đúng: tắt tạm dependency của 1 service → pod đó phải bị gỡ khỏi rotation (readiness fail) nhưng **không** bị restart hàng loạt (liveness không được fail theo).
 - *Rollback / nếu làm sai:*
-  `helm rollback techx-corp <revision trước>`. Nếu probe threshold sai làm pod bị đánh rớt liên tục dù healthy thật (false CrashLoopBackOff), phát hiện trong vài phút qua `kubectl get pods` (READY giảm bất thường).
+  `helm rollback techx-corp <revision trước>`. Rủi ro chính khi làm sai: (a) readiness quá gắt → pod flap khỏi rotation, giảm capacity ảo — thấy qua ready/restart metric; (b) liveness quá gắt → crashloop dây chuyền dưới tải (tệ nhất). Giảm thiểu: liveness luôn lỏng hơn readiness (đã thiết kế ở trên), roll out nhóm ngoài-checkout trước + theo dõi restart count 1–2h, phát hiện qua `kubectl get pods` (READY/RESTARTS bất thường).
 
 ## REL-04 — Thêm logic rollback/refund cho `checkout.PlaceOrder` khi ship lỗi sau khi đã charge
 *Trụ:* Reliability · *Ưu tiên đề xuất:* P0 · *Owner:* Chưa gán
@@ -275,13 +281,13 @@ Bẻ nhỏ theo khung 2h trong 24h qua cho thấy **toàn bộ 1.511 lỗi dồn
 *Trụ:* Reliability · *Ưu tiên đề xuất:* P1 · *Owner:* Chưa gán
 
 - *Evidence:*
-  `values.yaml` (`valkey-cart`): không RDB, không AOF, không PVC. Runtime: `kubectl get pv,pvc -A` → **không có PV/PVC nào trong toàn cluster** — nghĩa là Postgres và Kafka cũng hoàn toàn không có persistent storage, không riêng Valkey.
+  `values.yaml` (`valkey-cart`): không RDB, không AOF, không PVC. Runtime: `kubectl get pv,pvc -A` → **không có PV/PVC nào trong toàn cluster** — nghĩa là Postgres và Kafka cũng hoàn toàn không có persistent storage, không riêng Valkey. **Đây là nguyên nhân gốc chính xác của INC-2** (`INCIDENT_HISTORY.md`): "mất giỏ hàng sau khi node được lên lịch lại — lớp lưu giỏ hàng chạy đơn lẻ, state trong bộ nhớ mất theo". INC-2 map trực tiếp vào mục này, không phải suy diễn.
 - *Ảnh hưởng khách hàng:*
-  Restart pod `valkey-cart` (deploy, node drain, OOM) = khách đang có giỏ hàng mất sạch, phải thêm lại từ đầu. Nếu là Postgres/Kafka: mất dữ liệu sản phẩm/review/đơn hàng đã ghi vĩnh viễn.
+  Restart pod `valkey-cart` (deploy, node drain, OOM) = khách đang có giỏ hàng mất sạch, phải thêm lại từ đầu — **đã xảy ra thật ở INC-2**. Nếu là Postgres/Kafka: mất dữ liệu sản phẩm/review/đơn hàng đã ghi vĩnh viễn.
 - *Rủi ro (khả năng × mức nghiêm trọng):*
-  Valkey: khả năng trung bình (cộng dồn với REL-01, `valkey-cart` cũng 1 replica) × nghiêm trọng trung bình = P1. Postgres/Kafka: nghiêm trọng rất cao nhưng trùng phạm vi REL-08 (chờ mandate) → giữ ở mức theo dõi/accepted risk, không tách P0.
+  Valkey: khả năng **cao** (đã xảy ra thật ở INC-2, và `valkey-cart` vẫn 1 replica + 0 persistence tới giờ — chưa vá) × nghiêm trọng trung bình = **P1**. Postgres/Kafka: nghiêm trọng rất cao nhưng trùng phạm vi REL-08 (chờ mandate) → giữ ở mức theo dõi/accepted risk, không tách P0.
 - *Tác động business (SLO/BUDGET/INCIDENT_HISTORY):*
-  Valkey: không mất doanh thu trực tiếp (khách thêm lại giỏ được) nhưng ảnh hưởng trải nghiệm mỗi lần deploy. Postgres/Kafka: rất cao nếu xảy ra, nhưng có thể trùng phạm vi mandate managed-DB sắp tới.
+  Valkey: không mất doanh thu trực tiếp (khách thêm lại giỏ được) nhưng ảnh hưởng trải nghiệm mỗi lần deploy/node event — **INC-2 là bằng chứng lịch sử đã đóng nhưng bài học còn treo ("vài thành phần vẫn là SPOF")**. Postgres/Kafka: rất cao nếu xảy ra, nhưng có thể trùng phạm vi mandate managed-DB sắp tới.
 - *Giải pháp đề xuất:*
   Bật AOF (`appendonly yes`) hoặc RDB snapshot định kỳ + PVC cho `valkey-cart`, làm cùng đợt với REL-01. Với Postgres/Kafka: **ghi rõ đây là accepted risk có ý thức** trong ADR, không tự ý thêm PVC lớn ngay nếu nghi sắp có mandate managed-DB.
 - *Chi phí / effort:*

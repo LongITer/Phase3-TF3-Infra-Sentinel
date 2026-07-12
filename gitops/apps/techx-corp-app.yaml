@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: techx-corp-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git'
+    targetRevision: feature/gitops-migration
+    path: phase3 - information/techx-corp-chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - ../deploy/values-observability.yaml
+        - ../deploy/values-flagd-sync.yaml
+        - ../deploy/values-prod.yaml
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: techx-tf3
+  syncPolicy: {} # Manual Sync initially to avoid downtime during validation

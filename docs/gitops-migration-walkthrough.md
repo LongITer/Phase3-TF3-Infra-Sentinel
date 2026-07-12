@@ -62,8 +62,12 @@ checkout-f4c86f8fb-rd49k           1/1     Running   0          2d19h
 ### 4. Điều chỉnh Resource Quota & Bật Auto-Sync
 *   **Bật Auto-Sync & Self-Heal:** Chúng ta đã chuyển đổi `syncPolicy` của ứng dụng chính `techx-corp` từ `manual` sang `automated: prune: true, selfHeal: true`. Từ giờ, ArgoCD sẽ tự động đồng bộ mọi thay đổi cấu hình từ Git xuống cluster.
 *   **Điều chỉnh Resource Quota (Tối ưu cho việc scale):** 
-    *   *Sự cố phát hiện:* Khi áp đặt giới hạn CPU (`requests.cpu` và `limits.cpu`) trong ResourceQuota, Kubernetes bắt buộc toàn bộ pod trong namespace phải khai báo CPU requests/limits. Do 28/32 containers trong chart gốc không có CPU requests/limits, việc này gây nghẽn toàn bộ quá trình cập nhật Pod mới (`FailedCreate` do vượt quota).
+    *   *Sự cố phát hiện CPU:* Khi áp đặt giới hạn CPU (`requests.cpu` và `limits.cpu`) trong ResourceQuota, Kubernetes bắt buộc toàn bộ pod trong namespace phải khai báo CPU requests/limits. Do 28/32 containers trong chart gốc không có CPU requests/limits, việc này gây nghẽn toàn bộ quá trình cập nhật Pod mới (`FailedCreate` do vượt quota).
     *   *Khắc phục:* Đã loại bỏ CPU quota, chỉ giữ lại giới hạn RAM (**`Requests: 16Gi / Limits: 20Gi`**) và Pod limit (**`50`**). Đây là mức tối ưu giúp tận dụng tối đa 24Gi RAM vật lý của cluster, chừa lại 4Gi cho hệ thống K8s/ArgoCD, đồng thời cung cấp đủ không gian (headroom) để scale replicas luồng checkout lên 3-4 bản sao thoải mái.
+*   **Giải quyết lỗi nghẽn RAM Quota bằng LimitRange:**
+    *   *Sự cố phát hiện RAM:* Sau khi áp quota RAM, chúng ta phát hiện **4 tài nguyên bị Degraded** trong ứng dụng `techx-corp` (gồm Deployment/ReplicaSet của `flagd` và `llm`). Nguyên nhân do K8s bắt buộc tất cả container phải khai báo RAM, nhưng container `llm` và container phụ `init-config` của `flagd` trong Helm chart gốc lại thiếu cấu hình này, dẫn đến lỗi cấm tạo pod (`FailedCreate`).
+    *   *Khắc phục bằng LimitRange:* Tạo và cấu hình [limit-range.yaml](file:///home/tutruong/project/Phase3-TF3-Infra-Sentinel/gitops/infrastructure/limit-range.yaml) để tự động "tiêm" (inject) tài nguyên mặc định (**Request 50Mi / Limit 150Mi RAM**) cho bất kỳ Pod nào thiếu khai báo.
+    *   *Kết quả:* Kích hoạt thành công toàn bộ Pod, ứng dụng `techx-corp` chuyển trạng thái sang **`Synced` / `Healthy` (Xanh 100%)** trên ArgoCD.
 
 ### 5. Kích hoạt & Xác minh Network Policy (eBPF)
 *   **Vấn đề trước đó:** Do CNI gốc của EKS (`aws-node`) chạy ở chế độ tự quản (self-managed) và tắt tính năng Network Policy, các NetworkPolicy khai báo trên Git không có hiệu lực thực tế.

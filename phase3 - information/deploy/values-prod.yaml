@@ -1,0 +1,56 @@
+# Production values override for techx-corp-chart
+# Extracted from EKS live cluster active values to ensure 100% parity and zero downtime.
+
+default:
+  image:
+    repository: 012619468490.dkr.ecr.ap-southeast-1.amazonaws.com/techx-corp
+    tag: d2bc367
+
+grafana:
+  resources:
+    requests:
+      memory: 250Mi
+
+components:
+  accounting:
+    resources:
+      limits:
+        memory: 350Mi
+  flagd:
+    env:
+      - name: FLAGD_METRICS_EXPORTER
+        value: otel
+      - name: FLAGD_OTEL_COLLECTOR_URI
+        value: $(OTEL_COLLECTOR_NAME):4317
+      - name: GOMEMLIMIT
+        value: 60MiB
+      - name: FLAGD_SYNC_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: flagd-sync-token
+            key: token
+    command:
+      - "/flagd-build"
+      - "start"
+      - "--port"
+      - "8013"
+      - "--ofrep-port"
+      - "8016"
+      - "--sources"
+      - '[{"uri":"https://122.248.223.194.sslip.io/flags.json","provider":"http","authHeader":"Bearer $(FLAGD_SYNC_TOKEN)"}]'
+    sidecarContainers: []
+  frontend-proxy:
+    ingress:
+      annotations:
+        alb.ingress.kubernetes.io/healthcheck-path: /
+        alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+        alb.ingress.kubernetes.io/scheme: internet-facing
+        alb.ingress.kubernetes.io/target-type: ip
+      enabled: true
+      hosts:
+        - host: ""
+          paths:
+            - path: /
+              pathType: Prefix
+              port: 8080
+      ingressClassName: alb

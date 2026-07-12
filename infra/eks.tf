@@ -39,6 +39,38 @@ module "eks" {
 
   enable_irsa = true
 
+  # Adopt the 3 core addons (coredns, kube-proxy, vpc-cni) into EKS-managed addons
+  # BEFORE the 1.32->1.34 upgrade (ADR 0001, pre-work). They are currently
+  # self-managed (installed by the EKS bootstrap, not tracked by anything) - which
+  # means each version hop needs a manual addon update, and kube-proxy is already
+  # lagging the control plane (EKS Upgrade Insights WARNING). As managed addons, EKS
+  # updates them automatically to a compatible version on each control-plane upgrade.
+  #
+  # resolve_conflicts_on_create=OVERWRITE lets EKS take ownership of the existing
+  # self-managed installation. `most_recent` picks the latest version compatible with
+  # the current cluster version (this also clears the kube-proxy skew WARNING).
+  #
+  # ⚠️ Apply in a low-traffic window: adopting vpc-cni rolls the aws-node DaemonSet.
+  # It does not kill networking of already-running pods, but new pod scheduling pauses
+  # briefly during the roll.
+  cluster_addons = {
+    coredns = {
+      most_recent                 = true
+      resolve_conflicts_on_create = "OVERWRITE"
+      resolve_conflicts_on_update = "OVERWRITE"
+    }
+    kube-proxy = {
+      most_recent                 = true
+      resolve_conflicts_on_create = "OVERWRITE"
+      resolve_conflicts_on_update = "OVERWRITE"
+    }
+    vpc-cni = {
+      most_recent                 = true
+      resolve_conflicts_on_create = "OVERWRITE"
+      resolve_conflicts_on_update = "OVERWRITE"
+    }
+  }
+
   eks_managed_node_group_defaults = {
     ami_type = "AL2023_x86_64_STANDARD"
   }

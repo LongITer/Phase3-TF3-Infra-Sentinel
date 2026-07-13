@@ -23,7 +23,7 @@ permissions:
 
 env:
   AWS_REGION: ap-southeast-1
-  ECR_REGISTRY: 012619468490.dkr.ecr.ap-southeast-1.amazonaws.com
+  ECR_REGISTRY: 197826770971.dkr.ecr.ap-southeast-1.amazonaws.com
   ECR_REPOSITORY: techx-corp
 
 jobs:

@@ -1,11 +1,12 @@
 # Minikube override values cho techx-corp-chart
 # Dùng file này THAY THẾ cho values-prod.yaml khi chạy local với Minikube.
-# Ghi đè 2 điểm không tương thích với AWS:
-#   1. Image: dùng image mặc định của chart (nghiadaulau/techx-corp trên Docker Hub)
-#      KHÔNG override default.image -> chart tự dùng Docker Hub image đã có sẵn
-#   2. Ingress: dùng NGINX (minikube addons enable ingress) thay vì AWS ALB
+# Ghi đè các điểm không tương thích với AWS/production:
+#   1. Image: dùng image mặc định (nghiadaulau/techx-corp Docker Hub)
+#   2. Ingress: dùng NGINX thay vì AWS ALB
+#   3. flagd-ui: tắt sidecar (image không tồn tại trên Docker Hub)
+#   4. shipping: dùng ghcr.io (nghiadaulau build ARM64, không chạy trên x86_64)
 
-# Tắt các observability stack nặng khi chạy local (opensearch gây conflict orphan resource)
+# Tắt các observability stack nặng khi chạy local
 opensearch:
   enabled: false
 jaeger:
@@ -31,12 +32,23 @@ components:
     replicas: 1
   currency:
     replicas: 1
+
+  # FIX: nghiadaulau/techx-corp:1.0-shipping build cho ARM64, không chạy trên x86_64
+  # Dùng image multi-arch từ ghcr.io thay thế
   shipping:
     replicas: 1
+    imageOverride:
+      repository: ghcr.io/open-telemetry/demo
+      tag: 2.2.0-shippingservice
+
   quote:
     replicas: 1
   product-reviews:
     replicas: 1
+
+  # FIX: flagd-ui sidecar image không tồn tại trên Docker Hub -> tắt đi
+  flagd:
+    sidecarContainers: []
 
   # Đổi Ingress từ AWS ALB sang NGINX (Minikube)
   frontend-proxy:

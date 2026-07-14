@@ -18,7 +18,7 @@ param(
 # ── Dừng tất cả nếu có flag -Stop ──────────────────────────
 if ($Stop) {
     Write-Host "Stopping all private access port-forwards..." -ForegroundColor Yellow
-    Get-Job | Where-Object { $_.Name -like "pf-*" } | Stop-Job | Remove-Job
+    Get-Process kubectl -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "port-forward" } | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host "Done." -ForegroundColor Green
     exit 0
 }
@@ -26,7 +26,16 @@ if ($Stop) {
 # ── Kiểm tra Tailscale đang chạy ───────────────────────────
 Write-Host "Checking Tailscale status..." -ForegroundColor Cyan
 
-$tsStatus = tailscale status --json 2>$null | ConvertFrom-Json
+$tsPath = "C:\Program Files\Tailscale\tailscale.exe"
+if (-not (Test-Path $tsPath)) {
+    $tsPath = "$env:LOCALAPPDATA\Tailscale\tailscale.exe"
+}
+
+if (Test-Path $tsPath) {
+    $tsStatus = & $tsPath status --json 2>$null | ConvertFrom-Json
+} else {
+    $tsStatus = $null
+}
 if (-not $tsStatus) {
     Write-Error "Tailscale is not running or not installed. Please install and login first."
     Write-Host "Download: https://tailscale.com/download/windows" -ForegroundColor Yellow
@@ -36,19 +45,19 @@ if (-not $tsStatus) {
 # Lấy Tailscale IP của máy này
 $tsIP = $tsStatus.Self.TailscaleIPs | Where-Object { $_ -match "^\d+\.\d+\.\d+\.\d+$" } | Select-Object -First 1
 if (-not $tsIP) {
-    Write-Error "Could not get Tailscale IP. Make sure you are logged in: tailscale login"
+    Write-Error "Could not get Tailscale IP. Make sure you are logged in: & `"$tsPath`" login"
     exit 1
 }
 
 Write-Host "Tailscale IP: $tsIP" -ForegroundColor Green
 
-# ── Dừng các job cũ nếu còn ────────────────────────────────
-Get-Job | Where-Object { $_.Name -like "pf-*" } | Stop-Job | Remove-Job
+# ── Dừng các process cũ nếu còn ────────────────────────────────
+Get-Process kubectl -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "port-forward" } | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # ── Cấu hình các cổng vận hành ─────────────────────────────
 $services = @(
-    @{ Name = "grafana";      Namespace = "techx-tf3"; LocalPort = 3000;  RemotePort = 3000  },
-    @{ Name = "jaeger-query"; Namespace = "techx-tf3"; LocalPort = 16686; RemotePort = 16686 },
+    @{ Name = "grafana";      Namespace = "techx-tf3"; LocalPort = 3000;  RemotePort = 80    },
+    @{ Name = "jaeger";       Namespace = "techx-tf3"; LocalPort = 16686; RemotePort = 16686 },
     @{ Name = "argocd-server";Namespace = "argocd";    LocalPort = 8081;  RemotePort = 80    },
     @{ Name = "flagd";        Namespace = "techx-tf3"; LocalPort = 8013;  RemotePort = 8013  }
 )
@@ -57,14 +66,10 @@ $services = @(
 Write-Host "`nStarting private access tunnels..." -ForegroundColor Cyan
 
 foreach ($svc in $services) {
-    $jobName = "pf-$($svc.Name)"
-    $cmd = "kubectl port-forward svc/$($svc.Name) --address=$tsIP $($svc.LocalPort):$($svc.RemotePort) -n $($svc.Namespace)"
+    $argsList = "port-forward svc/$($svc.Name) --address=$tsIP $($svc.LocalPort):$($svc.RemotePort) -n $($svc.Namespace)"
     
-    Start-Job -Name $jobName -ScriptBlock {
-        param($cmd)
-        Invoke-Expression $cmd
-    } -ArgumentList $cmd | Out-Null
-
+    Start-Process -FilePath "kubectl" -ArgumentList $argsList -WindowStyle Minimized
+    
     Write-Host "  [OK] $($svc.Name.PadRight(15)) → http://${tsIP}:$($svc.LocalPort)" -ForegroundColor White
 }
 
@@ -84,24 +89,13 @@ Write-Host "  Storefront: (check ngrok URL)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Press Ctrl+C to stop all tunnels." -ForegroundColor Gray
 
-# ── Giữ script chạy và monitor ─────────────────────────────
+# ── Giữ script chạy ─────────────────────────────
 try {
     while ($true) {
         Start-Sleep -Seconds 30
-        # Tự restart job nếu bị chết
-        foreach ($svc in $services) {
-            $jobName = "pf-$($svc.Name)"
-            $job = Get-Job -Name $jobName -ErrorAction SilentlyContinue
-            if ($job -and $job.State -ne "Running") {
-                Write-Host "  [RESTART] $($svc.Name) tunnel died, restarting..." -ForegroundColor Red
-                Stop-Job $job | Remove-Job
-                $cmd = "kubectl port-forward svc/$($svc.Name) --address=$tsIP $($svc.LocalPort):$($svc.RemotePort) -n $($svc.Namespace)"
-                Start-Job -Name $jobName -ScriptBlock { param($c) Invoke-Expression $c } -ArgumentList $cmd | Out-Null
-            }
-        }
     }
 } finally {
     Write-Host "`nStopping all tunnels..." -ForegroundColor Yellow
-    Get-Job | Where-Object { $_.Name -like "pf-*" } | Stop-Job | Remove-Job
+    Get-Process kubectl -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "port-forward" } | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host "Done." -ForegroundColor Green
 }

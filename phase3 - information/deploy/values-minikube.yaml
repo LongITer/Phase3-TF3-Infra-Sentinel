@@ -1,15 +1,9 @@
 # Minikube override values cho techx-corp-chart
 # Dùng file này THAY THẾ cho values-prod.yaml khi chạy local với Minikube.
 # Ghi đè 2 điểm không tương thích với AWS:
-#   1. Image repository: dùng image công khai từ OpenTelemetry Demo thay vì ECR AWS
+#   1. Image: dùng image mặc định của chart (nghiadaulau/techx-corp trên Docker Hub)
+#      KHÔNG override default.image -> chart tự dùng Docker Hub image đã có sẵn
 #   2. Ingress: dùng NGINX (minikube addons enable ingress) thay vì AWS ALB
-
-default:
-  image:
-    # Image công khai của OpenTelemetry Demo (source gốc của techx-corp-chart)
-    # Không cần quyền pull từ ECR AWS
-    repository: ghcr.io/open-telemetry/demo
-    tag: 2.2.0
 
 # Tắt các observability stack nặng khi chạy local (opensearch gây conflict orphan resource)
 opensearch:

@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: 'https://github.com/tuu-ngo/Phase3-TF3-Infra-Sentinel.git'
+    repoURL: "https://github.com/LongITer/Phase3-TF3-Infra-Sentinel.git"
     targetRevision: main
     path: phase3 - information/techx-corp-chart
     helm:
@@ -15,7 +15,7 @@ spec:
         - ../deploy/values-flagd-sync.yaml
         - ../deploy/values-prod.yaml
   destination:
-    server: 'https://kubernetes.default.svc'
+    server: "https://kubernetes.default.svc"
     namespace: techx-tf3
   syncPolicy:
     automated:

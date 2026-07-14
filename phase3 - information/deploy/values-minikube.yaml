@@ -1,0 +1,59 @@
+# Minikube override values cho techx-corp-chart
+# Dùng file này THAY THẾ cho values-prod.yaml khi chạy local với Minikube.
+# Ghi đè 2 điểm không tương thích với AWS:
+#   1. Image repository: dùng image công khai từ OpenTelemetry Demo thay vì ECR AWS
+#   2. Ingress: dùng NGINX (minikube addons enable ingress) thay vì AWS ALB
+
+default:
+  image:
+    # Image công khai của OpenTelemetry Demo (source gốc của techx-corp-chart)
+    # Không cần quyền pull từ ECR AWS
+    repository: ghcr.io/open-telemetry/demo
+    tag: 2.2.0
+
+# Tắt các observability stack nặng khi chạy local (opensearch gây conflict orphan resource)
+opensearch:
+  enabled: false
+jaeger:
+  enabled: false
+prometheus:
+  enabled: false
+grafana:
+  enabled: false
+opentelemetry-collector:
+  enabled: false
+
+# Giảm replicas xuống 1 để tiết kiệm tài nguyên khi chạy local
+components:
+  frontend:
+    replicas: 1
+  product-catalog:
+    replicas: 1
+  cart:
+    replicas: 1
+  checkout:
+    replicas: 1
+  payment:
+    replicas: 1
+  currency:
+    replicas: 1
+  shipping:
+    replicas: 1
+  quote:
+    replicas: 1
+  product-reviews:
+    replicas: 1
+
+  # Đổi Ingress từ AWS ALB sang NGINX (Minikube)
+  frontend-proxy:
+    replicas: 1
+    ingress:
+      enabled: true
+      ingressClassName: nginx      # <<< NGINX thay vì alb
+      hosts:
+        - host: techx.local        # Tên domain local (sẽ map vào hosts file)
+          paths:
+            - path: /
+              pathType: Prefix
+              port: 8080
+      annotations: {}              # Xoá toàn bộ annotation của AWS ALB

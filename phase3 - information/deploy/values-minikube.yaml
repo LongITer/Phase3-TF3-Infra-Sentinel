@@ -6,17 +6,26 @@
 #   3. flagd-ui: tắt sidecar (image không tồn tại trên Docker Hub)
 #   4. shipping: dùng ghcr.io (nghiadaulau build ARM64, không chạy trên x86_64)
 
-# Tắt các observability stack nặng khi chạy local
+# Tắt stack nặng không cần thiết
 opensearch:
-  enabled: false
-jaeger:
   enabled: false
 prometheus:
   enabled: false
-grafana:
-  enabled: false
 opentelemetry-collector:
   enabled: false
+
+# Bật observability để expose qua Tailscale (MANDATE-01)
+jaeger:
+  enabled: true
+
+grafana:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
 
 # Giảm replicas xuống 1 để tiết kiệm tài nguyên khi chạy local
 components:

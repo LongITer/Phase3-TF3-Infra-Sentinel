@@ -39,7 +39,7 @@ components:
     replicas: 1
     imageOverride:
       repository: ghcr.io/open-telemetry/demo
-      tag: 2.2.0-shippingservice
+      tag: 2.2.0-shipping
 
   quote:
     replicas: 1

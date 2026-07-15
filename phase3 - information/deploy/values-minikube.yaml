@@ -148,4 +148,4 @@ components:
       annotations: {} # Xóa toàn bộ annotation của AWS ALB
 
   load-generator:
-    enabled: false
+    enabled: true

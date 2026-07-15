@@ -32,13 +32,24 @@ opentelemetry-collector:
 # Giảm replicas xuống 1 để tiết kiệm tài nguyên khi chạy local
 components:
   frontend:
-    replicas: 1
+    replicas: 2
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 8080
+      initialDelaySeconds: 2
+      periodSeconds: 2
     resources:
       requests:
         cpu: 100m
         memory: 100Mi
   product-catalog:
-    replicas: 1
+    replicas: 2
+    readinessProbe:
+      grpc:
+        port: 8080
+      initialDelaySeconds: 2
+      periodSeconds: 2
     resources:
       requests:
         cpu: 100m
@@ -46,13 +57,23 @@ components:
       limits:
         memory: 64Mi
   cart:
-    replicas: 1
+    replicas: 2
+    readinessProbe:
+      grpc:
+        port: 8080
+      initialDelaySeconds: 2
+      periodSeconds: 2
     resources:
       requests:
         cpu: 100m
         memory: 80Mi
   checkout:
-    replicas: 1
+    replicas: 2
+    readinessProbe:
+      grpc:
+        port: 8080
+      initialDelaySeconds: 2
+      periodSeconds: 2
     resources:
       requests:
         cpu: 100m
@@ -60,13 +81,23 @@ components:
       limits:
         memory: 64Mi
   payment:
-    replicas: 1
+    replicas: 2
+    readinessProbe:
+      grpc:
+        port: 8080
+      initialDelaySeconds: 2
+      periodSeconds: 2
     resources:
       requests:
         cpu: 10m
         memory: 60Mi
   currency:
-    replicas: 1
+    replicas: 2
+    readinessProbe:
+      grpc:
+        port: 8080
+      initialDelaySeconds: 2
+      periodSeconds: 2
     resources:
       requests:
         cpu: 10m

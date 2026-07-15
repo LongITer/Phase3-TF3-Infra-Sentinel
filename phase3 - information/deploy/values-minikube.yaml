@@ -1,11 +1,11 @@
-﻿# Minikube override values cho techx-corp-chart
-# DÃ¹ng file nÃ y THAY THáº¾ cho values-prod.yaml khi cháº¡y local vá»›i Minikube.
-# Ghi Ä‘Ã¨ 2 Ä‘iá»ƒm khÃ´ng tÆ°Æ¡ng thÃ­ch vá»›i AWS:
-#   1. Image: dÃ¹ng image máº·c Ä‘á»‹nh cá»§a chart (nghiadaulau/techx-corp trÃªn Docker Hub)
-#      KHÃ”NG override default.image -> chart tá»± dÃ¹ng Docker Hub image Ä‘Ã£ cÃ³ sáºµn
-#   2. Ingress: dÃ¹ng NGINX (minikube addons enable ingress) thay vÃ¬ AWS ALB
+# Minikube override values cho techx-corp-chart
+# Dùng file này THAY THẾ cho values-prod.yaml khi chạy local với Minikube.
+# Ghi đè 2 điểm không tương thích với AWS:
+#   1. Image: dùng image mặc định của chart (nghiadaulau/techx-corp trên Docker Hub)
+#      KHÔNG override default.image -> chart tự dùng Docker Hub image đã có sẵn
+#   2. Ingress: dùng NGINX (minikube addons enable ingress) thay vì AWS ALB
 
-# Táº¯t cÃ¡c observability stack náº·ng khi cháº¡y local (opensearch gÃ¢y conflict orphan resource)
+# Tắt các observability stack nặng khi chạy local (opensearch gây conflict orphan resource)
 opensearch:
   enabled: false
 jaeger:
@@ -17,40 +17,90 @@ grafana:
 opentelemetry-collector:
   enabled: false
 
-# Giáº£m replicas xuá»‘ng 1 Ä‘á»ƒ tiáº¿t kiá»‡m tÃ i nguyÃªn khi cháº¡y local
+# Giảm replicas xuống 1 để tiết kiệm tài nguyên khi chạy local
 components:
   frontend:
     replicas: 1
+    resources:
+      requests:
+        cpu: 30m
+        memory: 100Mi
   product-catalog:
     replicas: 1
+    resources:
+      requests:
+        cpu: 20m
+        memory: 32Mi
+      limits:
+        memory: 64Mi
   cart:
     replicas: 1
+    resources:
+      requests:
+        cpu: 30m
+        memory: 80Mi
   checkout:
     replicas: 1
+    resources:
+      requests:
+        cpu: 20m
+        memory: 40Mi
   payment:
     replicas: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 60Mi
   currency:
     replicas: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 10Mi
   shipping:
     replicas: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 10Mi
   quote:
     replicas: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 10Mi
   product-reviews:
     replicas: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+  ad:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 120Mi
+  email:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
 
-  # Äá»•i Ingress tá»« AWS ALB sang NGINX (Minikube)
+  # Đổi Ingress từ AWS ALB sang NGINX (Minikube)
   frontend-proxy:
     replicas: 1
     ingress:
       enabled: true
-      ingressClassName: nginx # <<< NGINX thay vÃ¬ alb
+      ingressClassName: nginx # <<< NGINX thay vì alb
       hosts:
-        - host: techx.local # TÃªn domain local (sáº½ map vÃ o hosts file)
+        - host: techx.local # Tên domain local (sẽ map vào hosts file)
           paths:
             - path: /
               pathType: Prefix
               port: 8080
-      annotations: {} # XoÃ¡ toÃ n bá»™ annotation cá»§a AWS ALB
+      annotations: {} # Xóa toàn bộ annotation của AWS ALB
 
 load-generator:
   env:

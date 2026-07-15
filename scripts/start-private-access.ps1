@@ -65,12 +65,15 @@ $services = @(
 # ── Khởi động port-forward bind vào Tailscale IP ───────────
 Write-Host "`nStarting private access tunnels..." -ForegroundColor Cyan
 
+$processes = @{}
+
 foreach ($svc in $services) {
-    $argsList = "port-forward svc/$($svc.Name) --address=$tsIP $($svc.LocalPort):$($svc.RemotePort) -n $($svc.Namespace)"
+    $argsList = "port-forward svc/$($svc.Name) --address=0.0.0.0 $($svc.LocalPort):$($svc.RemotePort) -n $($svc.Namespace)"
     
-    Start-Process -FilePath "kubectl" -ArgumentList $argsList -WindowStyle Minimized
+    $proc = Start-Process -FilePath "kubectl" -ArgumentList $argsList -WindowStyle Minimized -PassThru
+    $processes[$svc.Name] = @{ Process = $proc; Args = $argsList }
     
-    Write-Host "  [OK] $($svc.Name.PadRight(15)) → http://${tsIP}:$($svc.LocalPort)" -ForegroundColor White
+    Write-Host "  [OK] $($svc.Name.PadRight(15)) → http://${tsIP}:$($svc.LocalPort) (and localhost)" -ForegroundColor White
 }
 
 # ── In ra bảng URL để gửi cho mentor ───────────────────────
@@ -89,10 +92,17 @@ Write-Host "  Storefront: (check ngrok URL)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Press Ctrl+C to stop all tunnels." -ForegroundColor Gray
 
-# ── Giữ script chạy ─────────────────────────────
+# ── Giữ script chạy và tự động restart ─────────────────────
 try {
     while ($true) {
-        Start-Sleep -Seconds 30
+        Start-Sleep -Seconds 5
+        foreach ($svcName in $processes.Keys) {
+            $pInfo = $processes[$svcName]
+            if ($pInfo.Process.HasExited) {
+                Write-Host "  [RESTART] $svcName tunnel died, restarting..." -ForegroundColor Red
+                $pInfo.Process = Start-Process -FilePath "kubectl" -ArgumentList $pInfo.Args -WindowStyle Minimized -PassThru
+            }
+        }
     }
 } finally {
     Write-Host "`nStopping all tunnels..." -ForegroundColor Yellow

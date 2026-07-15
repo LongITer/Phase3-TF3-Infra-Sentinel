@@ -1,37 +1,23 @@
-# Minikube override values cho techx-corp-chart
-# Dùng file này THAY THẾ cho values-prod.yaml khi chạy local với Minikube.
-# Ghi đè các điểm không tương thích với AWS/production:
-#   1. Image: dùng image mặc định (nghiadaulau/techx-corp Docker Hub)
-#   2. Ingress: dùng NGINX thay vì AWS ALB
-#   3. flagd-ui: tắt sidecar (image không tồn tại trên Docker Hub)
-#   4. shipping: dùng ghcr.io (nghiadaulau build ARM64, không chạy trên x86_64)
+﻿# Minikube override values cho techx-corp-chart
+# DÃ¹ng file nÃ y THAY THáº¾ cho values-prod.yaml khi cháº¡y local vá»›i Minikube.
+# Ghi Ä‘Ã¨ 2 Ä‘iá»ƒm khÃ´ng tÆ°Æ¡ng thÃ­ch vá»›i AWS:
+#   1. Image: dÃ¹ng image máº·c Ä‘á»‹nh cá»§a chart (nghiadaulau/techx-corp trÃªn Docker Hub)
+#      KHÃ”NG override default.image -> chart tá»± dÃ¹ng Docker Hub image Ä‘Ã£ cÃ³ sáºµn
+#   2. Ingress: dÃ¹ng NGINX (minikube addons enable ingress) thay vÃ¬ AWS ALB
 
-# Tắt stack nặng không cần thiết
+# Táº¯t cÃ¡c observability stack náº·ng khi cháº¡y local (opensearch gÃ¢y conflict orphan resource)
 opensearch:
   enabled: false
-prometheus:
-  enabled: true
-opentelemetry-collector:
-  enabled: true
-
-# Bật observability để expose qua Tailscale (MANDATE-01)
 jaeger:
-  enabled: true
-
+  enabled: false
+prometheus:
+  enabled: false
 grafana:
-  enabled: true
-  grafana.ini:
-    server:
-      root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
-      serve_from_sub_path: false
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
-      memory: 256Mi
+  enabled: false
+opentelemetry-collector:
+  enabled: false
 
-# Giảm replicas xuống 1 để tiết kiệm tài nguyên khi chạy local
+# Giáº£m replicas xuá»‘ng 1 Ä‘á»ƒ tiáº¿t kiá»‡m tÃ i nguyÃªn khi cháº¡y local
 components:
   frontend:
     replicas: 1
@@ -45,51 +31,40 @@ components:
     replicas: 1
   currency:
     replicas: 1
-
-  # FIX: nghiadaulau/techx-corp:1.0-shipping build cho ARM64, không chạy trên x86_64
-  # Dùng image multi-arch từ ghcr.io thay thế
   shipping:
     replicas: 1
-    imageOverride:
-      repository: ghcr.io/open-telemetry/demo
-      tag: 2.2.0-shipping
-
   quote:
     replicas: 1
   product-reviews:
     replicas: 1
 
-  # FIX: flagd-ui sidecar image không tồn tại trên Docker Hub -> tắt đi
-  flagd:
-    sidecarContainers: []
-
-  # Đổi Ingress từ AWS ALB sang NGINX (Minikube)
+  # Äá»•i Ingress tá»« AWS ALB sang NGINX (Minikube)
   frontend-proxy:
     replicas: 1
     ingress:
       enabled: true
-      ingressClassName: nginx      # <<< NGINX thay vì alb
+      ingressClassName: nginx # <<< NGINX thay vÃ¬ alb
       hosts:
-        - host: techx.local        # Tên domain local (sẽ map vào hosts file)
+        - host: techx.local # TÃªn domain local (sáº½ map vÃ o hosts file)
           paths:
             - path: /
               pathType: Prefix
               port: 8080
-      annotations: {}              # Xoá toàn bộ annotation của AWS ALB
+      annotations: {} # XoÃ¡ toÃ n bá»™ annotation cá»§a AWS ALB
 
-  load-generator:
-    env:
-      - name: LOCUST_WEB_HOST
-        value: "0.0.0.0"
-      - name: LOCUST_WEB_PORT
-        value: "8089"
-      - name: LOCUST_USERS
-        value: "200"
-      - name: LOCUST_SPAWN_RATE
-        value: "20"
-      - name: LOCUST_HOST
-        value: http://frontend-proxy:8080
-      - name: LOCUST_HEADLESS
-        value: "false"
-      - name: LOCUST_AUTOSTART
-        value: "true"
+load-generator:
+  env:
+    - name: LOCUST_WEB_HOST
+      value: "0.0.0.0"
+    - name: LOCUST_WEB_PORT
+      value: "8089"
+    - name: LOCUST_USERS
+      value: "200"
+    - name: LOCUST_SPAWN_RATE
+      value: "20"
+    - name: LOCUST_HOST
+      value: "http://frontend-proxy:8080"
+    - name: LOCUST_HEADLESS
+      value: "false"
+    - name: LOCUST_AUTOSTART
+      value: "true"

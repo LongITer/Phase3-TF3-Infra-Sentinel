@@ -653,10 +653,7 @@
     },
     "LivenessProbe": {
       "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "httpGet"
-      ],
+      "additionalProperties": true,
       "properties": {
         "httpGet": {
           "type": "object",
@@ -716,10 +713,7 @@
     },
     "ReadinessProbe": {
       "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "httpGet"
-      ],
+      "additionalProperties": true,
       "properties": {
         "httpGet": {
           "type": "object",

@@ -14,6 +14,18 @@ prometheus:
   enabled: true
 grafana:
   enabled: true
+  readinessProbe:
+    timeoutSeconds: 5
+    initialDelaySeconds: 15
+  livenessProbe:
+    timeoutSeconds: 5
+    initialDelaySeconds: 30
+  resources:
+    limits:
+      memory: 600Mi
+    requests:
+      cpu: 100m
+      memory: 300Mi
 opentelemetry-collector:
   enabled: false
 

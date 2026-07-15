@@ -9,7 +9,7 @@
 opensearch:
   enabled: false
 jaeger:
-  enabled: false
+  enabled: true
 prometheus:
   enabled: true
 grafana:
@@ -27,7 +27,7 @@ grafana:
       cpu: 100m
       memory: 300Mi
 opentelemetry-collector:
-  enabled: false
+  enabled: true
 
 # Giảm replicas xuống 1 để tiết kiệm tài nguyên khi chạy local
 components:

@@ -11,9 +11,9 @@ opensearch:
 jaeger:
   enabled: false
 prometheus:
-  enabled: false
+  enabled: true
 grafana:
-  enabled: false
+  enabled: true
 opentelemetry-collector:
   enabled: false
 

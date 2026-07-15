@@ -102,5 +102,5 @@ components:
               port: 8080
       annotations: {} # Xóa toàn bộ annotation của AWS ALB
 
-load-generator:
-  enabled: false
+  load-generator:
+    enabled: false

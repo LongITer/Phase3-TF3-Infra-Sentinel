@@ -10,9 +10,9 @@
 opensearch:
   enabled: false
 prometheus:
-  enabled: false
+  enabled: true
 opentelemetry-collector:
-  enabled: false
+  enabled: true
 
 # Bật observability để expose qua Tailscale (MANDATE-01)
 jaeger:

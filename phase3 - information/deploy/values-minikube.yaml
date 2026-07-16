@@ -10,10 +10,16 @@ opensearch:
   enabled: false
 jaeger:
   enabled: true
+  query:
+    basePath: /jaeger
 prometheus:
   enabled: true
 grafana:
   enabled: true
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
+      serve_from_sub_path: true
   readinessProbe:
     timeoutSeconds: 5
     initialDelaySeconds: 15
